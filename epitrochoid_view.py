@@ -1,10 +1,5 @@
-#coding: utf-8
-# 
+import adsk.core, adsk.fusion, adsk.cam, traceback
 import math
-import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-
 
 i = 9   # 減速比
 tp = i+1 # 外ピンの数(MAX)
@@ -13,126 +8,135 @@ e = 2 # 偏心距離
 r = 30 # 外ピン配置半径
 #i = tc / (tp - tc)    # 減速比
 
-print(i)
-D = 20*r # サンプリング点
+# 内ピン
+rout = 2       # 内ピンの半径
+r_cam = 3   # 入力軸の半径
+
+rin = rout + e # 内ピンを通す穴の半径w
+r_cam_mount = r_cam + e # 入力軸の円
+
+rin_cam = r/2 + rout/2
+
+r_pinOut_case = 3 # 外ピンの外装
+
+division = 5*r # サンプリング点
+
+# 単位変換 [mm] -> [cm]
+e /= 10
+r /= 10
+rout /= 10
+rin /= 10
+r_cam /= 10
+r_cam_mount /= 10
+rin_cam /= 10
+r_pinOut_case /= 10
 
 # パラメータの決定
 r2 = r / (1 + i)
 r1 = i * r2
 rd = e
 
-# 内ピン
-rout = 4       # 内ピンの半径
-rin = rout + e # 内ピンを通す穴の半径
+def run(context):
+    ui = None
+    try:
+        app = adsk.core.Application.get()
+        ui  = app.userInterface
 
-rin_cam = r/2 + rout/2
+        design = app.activeProduct
 
-print(rout)
-print(rin)
-print(rin_cam)
+        # Get the root component of the active design.
+        rootComp = design.rootComponent
 
-if rd > r2:
-    print("rd が大きすぎる")
+        # Create a new sketch on the xy plane.
+        sketch = rootComp.sketches.add(rootComp.xYConstructionPlane)
 
-fig, ax = plt.subplots()
-
-def update(num):
-
-    for i in range(tp):
-        pins[i].set_data(rd * np.cos(theta) + x_move[i][num] + en_x_move[num], rd * np.sin(theta) + y_move[i][num] + en_y_move[num])
-    
-    cam.set_data(2*np.cos(theta) + en_x_move[num], 2*np.sin(theta) + en_y_move[num])
-    en.set_data(en_x + en_x_move[num], en_y + en_y_move[num])
+        # Create an object collection for the points.
+        points = adsk.core.ObjectCollection.create() # 遊星歯車
  
-    #cam_mount.set_data(mount_x + en_x_move[0], mount_y + en_y_move[0])
+        # Define the points the spline with fit through.
+        draw_epitrochoid(points)
 
-    for i in range(6):
-        in_rings[i].set_data(rin_x + x_move2[i][0], rin_y + y_move2[i][0])
-        in_pins[i].set_data(rout_x + x_move2[i][0] + en_x_move[num], rout_y + y_move2[i][0] + en_y_move[num])
-    in_com.set_data(rcom_x + en_x_move[num], rcom_y + en_y_move[num])
-     
-    theta_str = r'$\theta=$'
-    ax.set_title(theta_str + str(theta[num]/np.pi)[:4] + str(r' $\pi$'))
+        # Create the spline.
+        sketch.sketchCurves.sketchFittedSplines.add(points)
 
-def anime():
-    ani = animation.FuncAnimation(fig, update, D, interval=100)
-    #ani.save('episaikuroid.mp4', writer="ffmpeg",dpi=100)
-    plt.show()
+        
+        draw_pinOut_case(sketch, 0.0)
+        draw_pinOut_case(sketch, r_pinOut_case)
 
+        draw_cam(sketch)
+        draw_inRing(sketch)
+        draw_camMount(sketch)
+        draw_pinOut(sketch)
 
-ax.grid()
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_aspect('equal')
+        draw_pinIn(sketch)
+        draw_pinIn_cam(sketch)
 
-# plot data
-theta = np.linspace(0, 2*np.pi,D)
+    except:
+        if ui:
+            ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
 
-# エピコロイド曲線
-x = (r1 + r2)*np.cos(theta) - rd * np.cos((r1+r2)/r2*theta)
-y = (r1 + r2)*np.sin(theta) - rd * np.sin((r1+r2)/r2*theta)
-plt.plot(x, y, 'k-', lw=1)
+def draw_epitrochoid(points):
+    # エピコロイド曲線
+    theta = [i*2*math.pi/division for i in range(division)]
 
-# エピトロコイド平行曲線
-dx = (r1 + r2) * (-np.sin(theta) + (rd/r2) * np.sin((r1+r2)/r2*theta))
-dy = (r1 + r2) * (np.cos(theta) - (rd/r2) * np.cos((r1+r2)/r2*theta))
+    x = [(r1 + r2)*math.cos(th) - rd * math.cos((r1+r2)/r2*th) + e*math.cos(0) for th in theta]
+    y = [(r1 + r2)*math.sin(th) - rd * math.sin((r1+r2)/r2*th) + e*math.sin(0) for th in theta]
 
-x2 = [x[i] + (rd/(np.sqrt(dx[i]**2 + dy[i]**2)) * -dy[i]) for i in range(D)]
-y2 = [y[i] + (rd/(np.sqrt(dx[i]**2 + dy[i]**2)) * dx[i]) for i in range(D)]
+    # エピトロコイド平行曲線
+    dx = [(r1 + r2) * (-math.sin(th) + (rd/r2) * math.sin((r1+r2)/r2*th)) for th in theta]
+    dy = [(r1 + r2) * (math.cos(th) - (rd/r2) * math.cos((r1+r2)/r2*th)) for th in theta]
 
-plt.plot(x2, y2, 'y-', lw=2)
+    x2 = [x[i] + (rd/(math.sqrt(dx[i]**2 + dy[i]**2)) * -dy[i]) for i in range(division)]
+    y2 = [y[i] + (rd/(math.sqrt(dx[i]**2 + dy[i]**2)) * dx[i]) for i in range(division)]
 
-plt.plot((r1 + r2)*np.cos(theta), (r1 + r2)*np.sin(theta), 'k-', linestyle='dashed', lw=1) # エピコロイド曲線を書く小円の中心軌道
+    for i in range(division):
+        points.add(adsk.core.Point3D.create(x2[i], y2[i], 0))
+    points.add(adsk.core.Point3D.create(x2[0], y2[0], 0))
+
+# 出力リングを回すための穴
+def draw_inRing(sketch):
+    N = 6
+    x_move = [(rin_cam)*math.cos(2*math.pi*k/N) for k in range(N)]
+    y_move = [(rin_cam)*math.sin(2*math.pi*k/N) for k in range(N)]
+
+    for i in range(N):
+        # Draw a circle.
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(adsk.core.Point3D.create(x_move[i] + e*math.cos(0), y_move[i] + e*math.sin(0), 0), rin)
+    
+# 偏心カム
+def draw_camMount(sketch):
+    point = adsk.core.Point3D.create(e*math.cos(0), e*math.sin(0), 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, r_cam_mount)
+
+# 入力軸
+def draw_cam(sketch):
+    point = adsk.core.Point3D.create(0, 0, 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, r_cam)
 
 # 外ピン
-pins = []
-for i in range(tp):
-    pin, = plt.plot([], [], 'r-', lw=2)
-    pins.append(pin)
+def draw_pinOut(sketch):
+    x_move = [(r)*math.cos(2*math.pi*k/tp) for k in range(tp)]
+    y_move = [(r)*math.sin(2*math.pi*k/tp) for k in range(tp)]
 
-pin_theta = [(np.linspace(0, 2*np.pi/(i+1),D)) + 2*np.pi*k/tp for k in range(tp)]
-x_move = [(r)*np.cos(pin_theta[i]) for i in range(tp)]
-y_move = [(r)*np.sin(pin_theta[i]) for i in range(tp)]
+    for i in range(tp):
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(adsk.core.Point3D.create(x_move[i], y_move[i], 0), rd)
 
-# 動作確認
-cam, = plt.plot([], [], 'c-', lw=2)  # 偏心距離の軌跡（入力軸）
-en, = plt.plot([], [], 'r-', lw=1)   # 外ピンの動き（点）
-#gawa, = plt.plot([], [], 'r-', linestyle='dashed', lw=1) # 外ピンの動き（円柱）
-cam_mount, = plt.plot([], [], 'k-', lw=2)
+# 外ピンのケース
+def draw_pinOut_case(sketch, r_case):
+    point = adsk.core.Point3D.create(0, 0, 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, r+rd+r_case)
 
-# 軌道生成
-en_x = (r)*np.cos(theta)
-en_y = (r)*np.sin(theta)
+# 出力ピン
+def draw_pinIn(sketch):
+    N = 6
+    x_move = [(rin_cam)*math.cos(2*math.pi*k/N) for k in range(N)]
+    y_move = [(rin_cam)*math.sin(2*math.pi*k/N) for k in range(N)]
 
-en_x_move = -e*np.cos(theta)
-en_y_move = -e*np.sin(theta)
-
-mount_x = (r+e)/4*np.cos(theta)
-mount_y = (r+e)/4*np.sin(theta)
-
-# 内ピン
-in_rings = []
-in_pins = []
-for i in range(6):
-    in_ring, = plt.plot([], [], 'k-', lw=2)
-    in_pin, = plt.plot([], [], 'g-', lw=2)
-    in_rings.append(in_ring)
-    in_pins.append(in_pin)
-
-pin_theta2 = [(np.linspace(0, 2*np.pi/(i+1),D)) + 2*np.pi*k/6 for k in range(6)]
-x_move2 = [(rin_cam)*np.cos(pin_theta2[i]) for i in range(6)]
-y_move2 = [(rin_cam)*np.sin(pin_theta2[i]) for i in range(6)]
-
-rout_x = rout*np.cos(theta)
-rout_y = rout*np.sin(theta)
-rin_x = rin*np.cos(theta)
-rin_y = rin*np.sin(theta)
-
-in_com, = plt.plot([], [], 'g-', lw=1)
-rcom_x = rin_cam*np.cos(theta)
-rcom_y = rin_cam*np.sin(theta)
-
-plt.xlim(-2*r, 2*r)
-plt.ylim(-2*r, 2*r)
-
-anime()
+    for i in range(N):
+        point = adsk.core.Point3D.create(x_move[i], y_move[i], 0)
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(point, rout)
+    
+# 出力カム
+def draw_pinIn_cam(sketch):
+    point = adsk.core.Point3D.create(0, 0, 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, rout + rin_cam)
