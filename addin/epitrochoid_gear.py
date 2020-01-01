@@ -5,12 +5,12 @@ i = 9   # 減速比
 tp = i+1 # 外ピンの数(MAX)
 tc = tp - 1 # 曲線板の歯数(最大の減速比)
 e = 2 # 偏心距離
-r = 25 # 外ピン配置半径
+r = 30 # 外ピン配置半径
 #i = tc / (tp - tc)    # 減速比
 
 # 内ピン
-rout = 4       # 内ピンの半径
-r_cam = 2   # 入力軸の半径
+rout = 2       # 内ピンの半径
+r_cam = 3   # 入力軸の半径
 
 rin = rout + e # 内ピンを通す穴の半径w
 r_cam_mount = r_cam + e # 入力軸の円
@@ -52,49 +52,29 @@ def run(context):
 
         # Create an object collection for the points.
         points = adsk.core.ObjectCollection.create() # 遊星歯車
-        points_inRings = [adsk.core.ObjectCollection.create() for i in range(6)] # 出力リングを回すための穴
-        points_cam = adsk.core.ObjectCollection.create() # 入力軸
-        points_cam_mount = adsk.core.ObjectCollection.create() # 偏心カム
-        points_pinOuts = [adsk.core.ObjectCollection.create() for i in range(tp)]  # 外ピン
-        points_pinOut_case = [adsk.core.ObjectCollection.create() for i in range(2)] # 外ピンのケース
-
-        points_pinIns = [adsk.core.ObjectCollection.create() for i in range(6)] # 出力ピン
-        points_pinIn_cam =  adsk.core.ObjectCollection.create() # 出力カム        
-        
+ 
         # Define the points the spline with fit through.
         draw_epitrochoid(points)
-        for i in range(6):
-            draw_inRing(points_inRings[i], i, 6, 20)
-        draw_cam(points_cam, 10)
-        draw_camMount(points_cam_mount, 10)
-        for i in range(tp):
-            draw_pinOut(points_pinOuts[i], i, 20)
-        draw_pinOut_case(points_pinOut_case[0], 0.0, 100)
-        draw_pinOut_case(points_pinOut_case[1], r_pinOut_case, 100)
-
-        for i in range(6):
-            draw_pinIn(points_pinIns[i], i, 6, 20)
-        draw_pinIn_cam(points_pinIn_cam, 20)
 
         # Create the spline.
         sketch.sketchCurves.sketchFittedSplines.add(points)
-        for i in range(6):
-            sketch.sketchCurves.sketchFittedSplines.add(points_inRings[i])
-        sketch.sketchCurves.sketchFittedSplines.add(points_cam)
-        sketch.sketchCurves.sketchFittedSplines.add(points_cam_mount)
-        for i in range(tp):
-            sketch.sketchCurves.sketchFittedSplines.add(points_pinOuts[i])
-        sketch.sketchCurves.sketchFittedSplines.add(points_pinOut_case[0])
-        sketch.sketchCurves.sketchFittedSplines.add(points_pinOut_case[1])
 
-        for i in range(6):
-            sketch.sketchCurves.sketchFittedSplines.add(points_pinIns[i])
-        sketch.sketchCurves.sketchFittedSplines.add(points_pinIn_cam)
+        
+        draw_pinOut_case(sketch, 0.0)
+        draw_pinOut_case(sketch, r_pinOut_case)
+
+        draw_cam(sketch)
+        draw_inRing(sketch)
+        draw_camMount(sketch)
+        draw_pinOut(sketch)
+
+        draw_pinIn(sketch)
+        draw_pinIn_cam(sketch)
 
     except:
         if ui:
             ui.messageBox('Failed:\n{}'.format(traceback.format_exc()))
-    
+
 def draw_epitrochoid(points):
     # エピコロイド曲線
     theta = [i*2*math.pi/division for i in range(division)]
@@ -113,77 +93,50 @@ def draw_epitrochoid(points):
         points.add(adsk.core.Point3D.create(x2[i], y2[i], 0))
     points.add(adsk.core.Point3D.create(x2[0], y2[0], 0))
 
-def draw_inRing(points, n, N, D):
-    theta = [i*2*math.pi/D for i in range(D)]
+# 出力リングを回すための穴
+def draw_inRing(sketch):
+    N = 6
     x_move = [(rin_cam)*math.cos(2*math.pi*k/N) for k in range(N)]
     y_move = [(rin_cam)*math.sin(2*math.pi*k/N) for k in range(N)]
 
-    x = [rin*math.cos(th) + x_move[n] + e*math.cos(0) for th in theta]
-    y = [rin*math.sin(th) + y_move[n] + e*math.sin(0) for th in theta]
+    for i in range(N):
+        # Draw a circle.
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(adsk.core.Point3D.create(x_move[i] + e*math.cos(0), y_move[i] + e*math.sin(0), 0), rin)
+    
+# 偏心カム
+def draw_camMount(sketch):
+    point = adsk.core.Point3D.create(e*math.cos(0), e*math.sin(0), 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, r_cam_mount)
 
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
+# 入力軸
+def draw_cam(sketch):
+    point = adsk.core.Point3D.create(0, 0, 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, r_cam)
 
-def draw_camMount(points, D):
-    theta = [i*2*math.pi/D for i in range(D)]
-    x = [r_cam_mount*math.cos(th) + e*math.cos(0) for th in theta]
-    y = [r_cam_mount*math.sin(th) + e*math.sin(0) for th in theta]
-
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
-
-def draw_cam(points, D):
-    theta = [i*2*math.pi/D for i in range(D)]
-
-    x = [r_cam*math.cos(th) for th in theta]
-    y = [r_cam*math.sin(th) for th in theta]
-
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
-
-def draw_pinOut(points, n, D):
-    theta = [i*2*math.pi/D for i in range(D)]
+# 外ピン
+def draw_pinOut(sketch):
     x_move = [(r)*math.cos(2*math.pi*k/tp) for k in range(tp)]
     y_move = [(r)*math.sin(2*math.pi*k/tp) for k in range(tp)]
 
-    x = [rd*math.cos(th) + x_move[n] for th in theta]
-    y = [rd*math.sin(th) + y_move[n] for th in theta]
+    for i in range(tp):
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(adsk.core.Point3D.create(x_move[i], y_move[i], 0), rd)
 
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
+# 外ピンのケース
+def draw_pinOut_case(sketch, r_case):
+    point = adsk.core.Point3D.create(0, 0, 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, r+rd+r_case)
 
-def draw_pinOut_case(points, r_case, D):
-    theta = [i*2*math.pi/D for i in range(D)]
-
-    x = [(r+rd+r_case)*math.cos(th) for th in theta]
-    y = [(r+rd+r_case)*math.sin(th) for th in theta]
-
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
-
-def draw_pinIn(points, n, N, D):
-    theta = [i*2*math.pi/D for i in range(D)]
+# 出力ピン
+def draw_pinIn(sketch):
+    N = 6
     x_move = [(rin_cam)*math.cos(2*math.pi*k/N) for k in range(N)]
     y_move = [(rin_cam)*math.sin(2*math.pi*k/N) for k in range(N)]
 
-    x = [rout*math.cos(th) + x_move[n] for th in theta]
-    y = [rout*math.sin(th) + y_move[n] for th in theta]
-
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
-
-def draw_pinIn_cam(points, D):
-    theta = [i*2*math.pi/D for i in range(D)]
-
-    x = [(rout + rin_cam)*math.cos(th) for th in theta]
-    y = [(rout + rin_cam)*math.sin(th) for th in theta]
-
-    for i in range(D):
-        points.add(adsk.core.Point3D.create(x[i], y[i], 0))
-    points.add(adsk.core.Point3D.create(x[0], y[0], 0))
+    for i in range(N):
+        point = adsk.core.Point3D.create(x_move[i], y_move[i], 0)
+        sketch.sketchCurves.sketchCircles.addByCenterRadius(point, rout)
+    
+# 出力カム
+def draw_pinIn_cam(sketch):
+    point = adsk.core.Point3D.create(0, 0, 0)
+    sketch.sketchCurves.sketchCircles.addByCenterRadius(point, rout + rin_cam)
